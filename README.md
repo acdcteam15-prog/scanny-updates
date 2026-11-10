@@ -1,0 +1,2 @@
+# scanny-updates
+scanny-updates
