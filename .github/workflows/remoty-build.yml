@@ -1,4 +1,5 @@
 name: Remoty build
+# remoty-template: 2
 on:
   workflow_dispatch:
 jobs:
@@ -6,6 +7,32 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+      - name: Find the Android project
+        id: proj
+        shell: bash
+        run: |
+          kind=""; dir=""
+          if [ -f pubspec.yaml ] && grep -q '^flutter:' pubspec.yaml; then
+            kind=flutter; dir=.
+          elif [ -f settings.gradle ] || [ -f settings.gradle.kts ]; then
+            kind=gradle; dir=.
+          else
+            p=$(find . -maxdepth 3 -name pubspec.yaml -not -path '*/.*' | head -50 | while read -r f; do if grep -q '^flutter:' "$f"; then echo "$f"; break; fi; done)
+            if [ -n "$p" ]; then
+              kind=flutter; dir=$(dirname "$p")
+            else
+              g=$(find . -maxdepth 3 \( -name settings.gradle -o -name settings.gradle.kts \) -not -path '*/.*' | head -1)
+              if [ -n "$g" ]; then kind=gradle; dir=$(dirname "$g"); fi
+            fi
+          fi
+          if [ -z "$kind" ]; then
+            echo "::error::No Android project found in this repository. Remoty uploads the project before it builds; this is what the repository holds:"
+            find . -maxdepth 2 -not -path './.git*' | sort | head -60
+            exit 1
+          fi
+          echo "Found a $kind project in $dir"
+          echo "kind=$kind" >> "$GITHUB_OUTPUT"
+          echo "dir=$dir" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
@@ -13,12 +40,29 @@ jobs:
       - uses: android-actions/setup-android@v3
         with:
           packages: platform-tools
+      - uses: subosito/flutter-action@v2
+        if: steps.proj.outputs.kind == 'flutter'
+        with:
+          channel: stable
+          cache: true
       - uses: gradle/actions/setup-gradle@v5
+        if: steps.proj.outputs.kind == 'gradle'
       - name: Build the debug APK
+        working-directory: ${{ steps.proj.outputs.dir }}
+        shell: bash
         run: |
-          if [ -f ./gradlew ]; then chmod +x ./gradlew; ./gradlew assembleDebug --stacktrace; else gradle assembleDebug --stacktrace; fi
+          if [ "${{ steps.proj.outputs.kind }}" = "flutter" ]; then
+            flutter pub get
+            flutter build apk --debug
+          elif [ -f ./gradlew ]; then
+            chmod +x ./gradlew; ./gradlew assembleDebug --stacktrace
+          else
+            gradle assembleDebug --stacktrace
+          fi
       - uses: actions/upload-artifact@v5
         with:
           name: apk
-          path: '**/build/outputs/apk/debug/*.apk'
+          path: |
+            **/build/outputs/apk/debug/*.apk
+            **/build/app/outputs/flutter-apk/app-debug.apk
           if-no-files-found: error
