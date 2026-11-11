@@ -21,6 +21,14 @@ class WatchScreen extends StatefulWidget {
 class _WatchScreenState extends State<WatchScreen> {
   WatchMode _mode = WatchMode.all;
   String _feed = '';
+  String _query = '';
+  final _q = TextEditingController();
+
+  @override
+  void dispose() {
+    _q.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -31,7 +39,7 @@ class _WatchScreenState extends State<WatchScreen> {
     final read = prefs.watchRead;
     final sysName = {for (final x in d.systemDocs) x.id: x.name};
     final feeds = {for (final i in d.watchItems) i.feed}.where((f) => f.isNotEmpty).toList()..sort();
-    final list = filterWatch(d.watchItems, mode: _mode, myGroups: myGroups, isAdmin: d.isAdmin, read: read, feed: _feed);
+    final list = filterWatch(d.watchItems, mode: _mode, myGroups: myGroups, isAdmin: d.isAdmin, read: read, feed: _feed, query: _query);
     Widget chip(String label, bool on, VoidCallback tap) => Padding(padding: const EdgeInsets.only(right: 8), child: ChoiceChip(label: Text(label), selected: on, onSelected: (_) => tap()));
     return Column(children: [
       Padding(
@@ -41,6 +49,23 @@ class _WatchScreenState extends State<WatchScreen> {
       Padding(
         padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
         child: Align(alignment: Alignment.centerLeft, child: Text('Advisories, research and news. Items that mention your systems glow red.', style: TextStyle(color: t.colorScheme.onSurfaceVariant, fontSize: 12.5))),
+      ),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+        child: TextField(
+          controller: _q,
+          onChanged: (v) => setState(() => _query = v.trim()),
+          textInputAction: TextInputAction.search,
+          decoration: InputDecoration(
+            hintText: 'Search the title or the text inside articles',
+            prefixIcon: const Icon(Icons.search_rounded),
+            suffixIcon: _query.isEmpty ? null : IconButton(icon: const Icon(Icons.close_rounded), tooltip: 'Clear', onPressed: () => setState(() {
+                  _q.clear();
+                  _query = '';
+                })),
+            isDense: true,
+          ),
+        ),
       ),
       SizedBox(
         height: 46,
@@ -56,20 +81,27 @@ class _WatchScreenState extends State<WatchScreen> {
       ),
       Expanded(
         child: list.isEmpty
-            ? Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(28),
-                  child: Text(
-                    d.watchItems.isEmpty ? 'No articles yet. Scanny for Windows sends the newest ones every few minutes.' : 'Nothing matches this filter.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: t.colorScheme.onSurfaceVariant),
-                  ),
+            ? (d.watchItems.isEmpty
+                ? const EmptyState(icon: Icons.rss_feed_rounded, color: kTeal, title: 'No articles yet', body: 'Scanny for Windows sends the newest ones every few minutes.')
+                : EmptyState(
+                    icon: Icons.search_off_rounded,
+                    title: 'Nothing matches this filter',
+                    actionLabel: 'Clear filters',
+                    onAction: () => setState(() {
+                      _mode = WatchMode.all;
+                      _feed = '';
+                      _q.clear();
+                      _query = '';
+                    }),
+                  ))
+            : AnimatedSwitcher(
+                duration: const Duration(milliseconds: 220),
+                child: ListView.builder(
+                  key: ValueKey('$_mode|$_feed'),
+                  padding: const EdgeInsets.fromLTRB(14, 4, 14, 24),
+                  itemCount: list.length,
+                  itemBuilder: (c, n) => Stagger(index: n, child: _card(context, t, list[n], mentionsMe(list[n], myGroups, d.isAdmin), !read.contains(list[n].id), mentionLabel(mentionedIds(list[n], myGroups, d.isAdmin), (id) => sysName[id] ?? ''))),
                 ),
-              )
-            : ListView.builder(
-                padding: const EdgeInsets.fromLTRB(14, 4, 14, 24),
-                itemCount: list.length,
-                itemBuilder: (c, n) => _card(context, t, list[n], mentionsMe(list[n], myGroups, d.isAdmin), !read.contains(list[n].id), mentionLabel(mentionedIds(list[n], myGroups, d.isAdmin), (id) => sysName[id] ?? '')),
               ),
       ),
     ]);
@@ -88,14 +120,11 @@ class _WatchScreenState extends State<WatchScreen> {
     const red = Color(0xFFE5484D);
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
-      child: Container(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: mine ? red.withValues(alpha: 0.7) : t.colorScheme.outlineVariant.withValues(alpha: 0.4)),
-          boxShadow: mine ? [BoxShadow(color: red.withValues(alpha: 0.22), blurRadius: 14, spreadRadius: 0)] : null,
-          color: t.colorScheme.surfaceContainerLow,
-        ),
-        child: InkWell(
+      child: PressScale(
+        child: GlowCard(
+          stripe: mine ? red : kTeal,
+          glow: mine,
+          child: InkWell(
           borderRadius: BorderRadius.circular(16),
           onTap: () => openArticle(context, i),
           child: Padding(
@@ -123,12 +152,17 @@ class _WatchScreenState extends State<WatchScreen> {
                 const SizedBox(height: 6),
                 Text(i.summary, maxLines: 3, overflow: TextOverflow.ellipsis, style: TextStyle(color: t.colorScheme.onSurfaceVariant, fontSize: 13, height: 1.4)),
               ],
+              if (watchSnippet(i, _query).isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Text(watchSnippet(i, _query), maxLines: 3, overflow: TextOverflow.ellipsis, style: TextStyle(color: t.colorScheme.primary, fontSize: 12.5, height: 1.4)),
+              ],
               if (i.cves.isNotEmpty) ...[
                 const SizedBox(height: 8),
                 Wrap(spacing: 6, runSpacing: 4, children: [for (final c in i.cves.take(4)) Pill(c, color: const Color(0xFFF08C2B))]),
               ],
             ]),
           ),
+        ),
         ),
       ),
     );

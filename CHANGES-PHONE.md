@@ -1,5 +1,72 @@
 # Changes
 
+## 1.16.0 - search inside articles, advisory findings
+- **Zero-day watch search:** type words; every word must appear in the title, the summary, the **text inside the article** (the first 4,000 characters, kept on the phone), the feed or the CVE list. When the match is only inside the text, a snippet shows where.
+- **Advisory findings** (from Scanny for Windows 1.16.0): when an article lists your version as affected, one finding appears with an **Advisory** tag. Its page shows the affected lines, the CVE chips (tap one to read it) and the article in References. Needs Scanny for Windows 1.16.0.
+
+## 1.15.0 - same version as Scanny for Windows 1.15.0
+- No change in the app itself (WhatsApp alerts from Scanny for Windows are now one CVE per message, with a link, and can be customized).
+
+## 1.14.1 - same version as Scanny for Windows 1.14.1
+- No change in the app itself (the Windows app can now remove a lost PC from a cluster and delete a cluster).
+
+## 1.14.0 - red dots, activity notifications, my findings first
+- **Activity tab: red dots.** The tab gets a red dot when somebody else did something new. Opening the tab clears the dot of the tab; each item keeps its own dot until you open it (tap it: the finding opens). Your own actions never get a dot, and neither does anything from before the first launch.
+- **Activity notifications:** whatever others do on findings in your groups (status, assign, snooze, comment) is pushed to you, except your own actions. **A tap opens that finding.** Settings > Notifications > Activity notifications switches it off for this phone. Needs Scanny for Windows 1.14.0.
+- **The findings list starts as "open + assigned to me"** when something is assigned to you; otherwise all open findings, as before. One tap on the Assigned to me chip shows everything. The dashboard still counts everything.
+
+## 1.13.1 - Ask AI shows what is happening
+- Each question shows its steps: **Sent to Firebase**, **Scanny for Windows picked it up**, **Asking <AI service> (2 of 3)** with the services that did not answer and why, and the seconds counting up. The answer says how long it took.
+- The **Ask AI button is never dead**: it always opens; offline it says so instead of doing nothing. Needs Scanny for Windows 1.13.1 for the per-service progress.
+
+## 1.13.0 - same version as Scanny for Windows 1.13.0 (high availability)
+- No change in the app itself. Scanny for Windows 1.13.0 can run on up to three PCs with one main and automatic failover; the phones keep working through Firebase while a backup PC takes over. See HIGH-AVAILABILITY.md.
+
+## 1.12.0 - published date, references, Ask AI, every article tagged (same version as Scanny for Windows and iPhone)
+- **Published date** on every finding card ("Published 2025-07-24"): a CVE can be years older than the day Scanny found it. New sort: **Newest published first** (Sort chip; it is saved with your views).
+- **References** on the finding page: the vendor advisory, patch, government and exploit links of the CVE with their kinds. Tap one to read it in Scanny's reader (or the browser, if you chose that for articles).
+- **Ask AI** (finding page): quick questions or your own. Scanny for Windows answers with its own AI keys and tries the AI services one after the other until one answers, so the keys never reach the phone. The PC must be on; each person may ask 30 questions a day. Needs Scanny for Windows 1.12.0.
+- **Zero-day watch:** the phone now loads every article of the last 30 days (before: the newest 60) and Windows tags each one against all your systems, also by the CVEs of your findings. **Mentions my systems** now finds them all.
+
+## 1.8.0 - a calmer, more useful Findings screen (design Phase 6)
+- **Trend:** under the 14-day line, "▲ 3 more than last week" (or fewer / same) and how many findings are new in 7 days.
+- **Do this today:** a card with the 3 findings that matter most right now (actively exploited first, then overdue, then the highest score). On a calm day it is not shown. Tap one to open it.
+- **The dashboard and its cards now scroll with the list**, so on a small phone the findings are never squeezed.
+- **System cards** have a stripe in the colour of their worst open finding (green when clean).
+- When you switch a filter the cards slide in again.
+
+## 1.7.0 - snooze, saved views, "since you last looked", @mentions
+- **Snooze** (finding page > Snooze): 7, 30 or 90 days. The finding leaves the open list and the counts for **everyone** (Scanny for Windows and the other phones too) and comes back by itself. A **Snoozed** chip on Findings shows them; the card says "Snoozed until ...". Needs Scanny for Windows 1.11.0 (it deploys the new security rules by itself on its next sync).
+- **Views:** choose filters, then Views > Save these filters. Saved views live on this phone.
+- **Since you last looked:** after 10 minutes or more away, a card tells you how many findings are new, how many are critical, and how many someone else changed.
+- **@mention:** the @ button in the comment box lists the people who can see the finding; the person gets a push (needs Windows 1.11.0).
+- All motion is off when Android's "remove animations" setting is on. No new packages.
+
+## 1.6.0 - friendlier empty screens, section icons, clearer setup (design Phase 4)
+- **Empty screens** (Findings, Watch, Activity) now show a soft floating illustration, a plain sentence and, when filters caused it, a **Clear filters** button. A list with nothing open says "No open findings" instead of looking broken.
+- **Settings:** every section header has an icon.
+- **Dashboard counts** are read out properly by TalkBack ("Critical: 3 open, selected").
+- **Setup wizard** (START-SCANNY-PHONE option 1) shows a progress bar and "step N of M" before every step.
+
+## 1.5.0 - finding details and swipe actions (design Phase 3)
+- **Finding page:** a CVSS gauge that sweeps up to the score (coloured by its band), an EPSS bar that fills in, badges (Actively exploited, Public exploit, Patch available, Overdue), a **Share** button (CVE, severity, system, fixed version and the NVD link) next to Copy, and the history is now a **timeline** that ends with "Found by Scanny".
+- **Swipe a finding card:** right = **Acknowledge**, left = **Assign to me**. A snackbar offers **Undo**. Works only online and on open findings. The card springs back and the list updates by itself.
+- The severity ring flies from the list into the finding page.
+- All motion is off when Android's "remove animations" setting is on. No new packages.
+
+## 1.4.0 - new look for Findings and the tab bar (design Phase 1 and 2)
+- **Dashboard header** on Findings: a ring of the open findings by severity that draws itself in, counts that count up (tap Critical, High, Medium or Low to filter), a line of new findings per day for 14 days, and a Live / Offline copy indicator with a breathing dot.
+- **New filter chips:** Exploited, New today, Overdue (next to Assigned to me).
+- **Finding and system cards** fade and slide in one after another, press in slightly, and findings have a stripe in the colour of their severity. Changing a filter cross-fades the list.
+- **Tab bar:** a pill slides behind the selected tab, its icon pops, and a light tap is felt when switching.
+- All motion is off when Android's "remove animations" setting is on. No new packages.
+
+## 1.3.3 - smoother Watch tab (design Phase 1, Android part)
+- Watch cards fade and slide up one after the other (first 10), press in slightly when touched, and have a colour stripe on the leading edge (red when the article mentions your systems, teal otherwise).
+- The red glow now pulses three times and stops, instead of staying lit.
+- Changing a filter cross-fades the list.
+- All motion is off when Android's "remove animations" setting is on. No new packages.
+
 ## 1.3.2 - no more strange groups on the admin's Settings page
 - Groups such as "rt-a-eu4kzp" or "rt-b-qf6pew" were leftovers of the setup wizard's security self-test, not your groups. The phone now hides them, the wizard deletes its test data twice (also its sub-documents), and Scanny for Windows 1.10.11 removes the leftovers from Firebase.
 

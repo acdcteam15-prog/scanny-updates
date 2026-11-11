@@ -205,7 +205,9 @@ class DataService extends ChangeNotifier {
 
   void _listenWatch() {
     _watchSub?.cancel();
-    _watchSub = _db.collection('watch').orderBy('t', descending: true).limit(60).snapshots().listen((s) {
+    // Every article of the last 30 days (Scanny for Windows tags each one against all the systems), so "Mentions my systems" can check them all.
+    final cutoff = DateTime.now().millisecondsSinceEpoch / 1000 - 30 * 86400;
+    _watchSub = _db.collection('watch').where('t', isGreaterThan: cutoff).orderBy('t', descending: true).limit(600).snapshots().listen((s) {
       watchItems = [for (final d in s.docs) WatchItem.fromMap(d.id, _plain(d.data()))];
       notifyListeners();
     }, onError: (Object e) {
@@ -348,6 +350,48 @@ class DataService extends ChangeNotifier {
       });
       final text = '${kStatusLabel[f.status]} -> ${kStatusLabel[to]}${to == Status.solved && proof != null ? ': ${proof.text}' : ''}';
       _audit(b, gid, aid, f, 'status', text, {'from': kStatusRemote[f.status], 'to': kStatusRemote[to]});
+    }
+    await b.commit();
+  }
+
+  /// Ask AI: the question goes through Firebase and Scanny for Windows answers it with its own AI keys (it tries the providers one after the other).
+  /// Every event is the question's record: status pending / working / done (answer, provider) / error (error).
+  Stream<Map<String, dynamic>> askAi(Finding f, String question, String history) async* {
+    _needOnline();
+    final ref = _db.collection('ai').doc(_newId('q'));
+    try {
+      await ref.set({
+        'email': email,
+        'fid': f.fid,
+        'question': question,
+        'status': 'pending',
+        'at': FieldValue.serverTimestamp(),
+        if (history.isNotEmpty) 'history': history,
+      });
+    } on FirebaseException catch (e) {
+      yield {'status': 'error', 'error': e.code == 'permission-denied' ? 'Not allowed. Ask the admin to update Scanny for Windows (1.12.0 or newer).' : 'Could not send the question (${e.code}).'};
+      return;
+    }
+    yield {'status': 'pending', '_sent': true}; // the question is in Firebase: the screen can say so
+    yield* ref.snapshots().map((s) => s.data() ?? const <String, dynamic>{});
+  }
+
+  /// Snooze for [days] (7, 30 or 90); 0 removes the snooze. Scanny for Windows and the other phones see it too.
+  Future<void> snooze(Finding f, int days) async {
+    _needOnline();
+    final gids = _writable(f);
+    if (gids.isEmpty) throw StateError('You cannot change this finding.');
+    final b = _db.batch();
+    final aid = _newId('a');
+    final until = DateTime.now().add(Duration(days: days));
+    for (final gid in gids) {
+      b.update(_fRef(gid, f.fid), {
+        'snoozeUntil': days > 0 ? Timestamp.fromDate(until) : FieldValue.delete(),
+        'statusAt': FieldValue.serverTimestamp(),
+        'statusBy': email,
+        'statusByName': displayName,
+      });
+      _audit(b, gid, aid, f, 'snooze', days > 0 ? 'Snoozed for $days days' : 'Snooze removed');
     }
     await b.commit();
   }

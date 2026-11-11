@@ -167,11 +167,15 @@ class WatchItem {
   final List<String> groups;
   final bool mine;
 
+  /// The start of the article's text (the first 4,000 characters, read by Scanny for Windows): what the search looks into.
+  final String text;
+
   /// Group id -> ids of the systems this article mentions in that group (the names are looked up among the systems this person may read).
   final Map<String, List<String>> mentions;
-  const WatchItem({required this.id, required this.title, required this.feed, required this.link, required this.summary, required this.published, required this.t, required this.cves, required this.groups, required this.mine, this.mentions = const {}});
+  const WatchItem({required this.id, required this.title, required this.feed, required this.link, required this.summary, required this.published, required this.t, required this.cves, required this.groups, required this.mine, this.mentions = const {}, this.text = ''});
   factory WatchItem.fromMap(String id, Map<String, dynamic> m) => WatchItem(
         id: id,
+        text: _s(m['text']),
         title: _s(m['title']),
         feed: _s(m['feed']),
         link: _s(m['link']),
@@ -186,6 +190,53 @@ class WatchItem {
 
   /// When it was published; falls back to when Scanny first saw it.
   DateTime get when => DateTime.tryParse(published)?.toLocal() ?? DateTime.fromMillisecondsSinceEpoch((t * 1000).round());
+}
+
+/// A public link of a CVE (vendor advisory, patch, government resource, exploit write-up ...), with the kinds NVD gives it.
+class RefLink {
+  final String url;
+  final List<String> tags;
+  const RefLink(this.url, this.tags);
+}
+
+/// Reads the links Scanny for Windows sends. Anything that is not a web address is dropped.
+List<RefLink> refListFrom(Object? v) {
+  if (v is! List) return const [];
+  final out = <RefLink>[];
+  for (final r in v) {
+    if (r is! Map) continue;
+    final u = '${r['url'] ?? ''}';
+    if (!RegExp(r'^https?://', caseSensitive: false).hasMatch(u)) continue;
+    out.add(RefLink(u, [for (final t in (r['tags'] is List ? r['tags'] as List : const [])) if ('$t'.isNotEmpty) '$t'].take(4).toList()));
+    if (out.length >= 12) break;
+  }
+  return out;
+}
+
+/// A short readable form of a link for a list: host and path, cut.
+String refLabel(String url) {
+  final u = Uri.tryParse(url);
+  if (u == null || u.host.isEmpty) return url.length > 58 ? '${url.substring(0, 57)}…' : url;
+  final t = '${u.host.replaceFirst(RegExp(r'^www\.'), '')}${u.path.length > 1 ? u.path : ''}${u.hasQuery ? '?${u.query}' : ''}';
+  return t.length > 58 ? '${t.substring(0, 57)}…' : t;
+}
+
+/// An advisory finding: an article that lists your version as affected, with the CVEs it names.
+class AdvisoryInfo {
+  final String id;
+  final String title;
+  final String link;
+  final String feed;
+  final String version;
+  final List<String> cves;
+  final List<String> affected;
+  const AdvisoryInfo({required this.id, required this.title, required this.link, required this.feed, required this.version, required this.cves, required this.affected});
+}
+
+AdvisoryInfo? advisoryFrom(Object? v) {
+  if (v is! Map) return null;
+  List<String> strs(Object? x) => x is List ? [for (final e in x) '$e'] : const [];
+  return AdvisoryInfo(id: '${v['id'] ?? ''}', title: '${v['title'] ?? ''}', link: '${v['link'] ?? ''}', feed: '${v['feed'] ?? ''}', version: '${v['version'] ?? ''}', cves: strs(v['cves']), affected: strs(v['affected']));
 }
 
 class Finding {
@@ -219,6 +270,18 @@ class Finding {
   final String statusBy;
   final String statusByName;
   final DateTime? statusAt;
+
+  /// Snoozed until this moment (set on a phone or in Scanny for Windows): hidden from the open list and the counts while it lasts.
+  final DateTime? snoozeUntil;
+
+  /// Set for an advisory finding (the article is the source, not one CVE).
+  final AdvisoryInfo? advisory;
+
+  /// When the CVE was published (yyyy-mm-dd, or '' when unknown): it can be years before Scanny first found it.
+  final String published;
+
+  /// Public links of the CVE.
+  final List<RefLink> refs;
 
   /// The source whose record Scanny kept for this CVE, and the other sources that reported the same CVE (shown once, as a tag).
   final String source;
@@ -255,6 +318,10 @@ class Finding {
     this.statusBy = '',
     this.statusByName = '',
     this.statusAt,
+    this.snoozeUntil,
+    this.published = '',
+    this.advisory,
+    this.refs = const [],
     this.source = '',
     this.alsoBy = const [],
   });
@@ -291,6 +358,10 @@ class Finding {
       statusBy: _s(m['statusBy']),
       statusByName: _s(m['statusByName']),
       statusAt: toDate(m['statusAt']),
+      snoozeUntil: toDate(m['snoozeUntil']),
+      published: _s(m['published']).length >= 10 ? _s(m['published']).substring(0, 10) : '',
+      refs: refListFrom(m['refs']),
+      advisory: advisoryFrom(m['advisory']),
       source: _s(m['source']),
       alsoBy: _list(m['alsoBy']),
     );
@@ -298,6 +369,9 @@ class Finding {
 
   /// Still needs work: not solved, not a false positive, not an accepted risk.
   bool get isOpen => !gone && (status == Status.ongoing || status == Status.acknowledged);
+
+  bool snoozedAt(DateTime now) => snoozeUntil != null && snoozeUntil!.isAfter(now);
+  bool get snoozed => snoozedAt(DateTime.now());
 
   bool get overdue {
     if (!isOpen || due.isEmpty) return false;

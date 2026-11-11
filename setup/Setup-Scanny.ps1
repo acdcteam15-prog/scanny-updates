@@ -2883,13 +2883,23 @@ function Confirm-GoogleAccount {
   Set-St 'accountConfirmed' ([string]$Script:Account)
 }
 
+# A text progress bar for the setup steps: how far along it is, and which step is next.
+function Show-StepBar([int]$Index, [int]$Total, [string]$Title) {
+  $w = 24
+  $done = [int][math]::Floor($w * ($Index - 1) / [math]::Max(1, $Total))
+  Say ''
+  Say ('  [' + ('#' * $done) + ('-' * ($w - $done)) + ']  step ' + $Index + ' of ' + $Total + ':  ' + $Title) 'DarkCyan'
+}
+
 function Invoke-FullSetup {
   if (Test-OldRegionProject) { Retire-OldProject }
   Set-St 'regionPolicy' $RegionPolicy
   Head ('Scanny setup - everything is saved, you can stop and re-run any time')
   Info ('Work folder: ' + $Work + '   Log: ' + $LogPath)
   Update-SessionPath
-  foreach ($s in $Steps) { Invoke-Step $s }
+  $stepNo = 0
+  foreach ($s in $Steps) { $stepNo++; Show-StepBar $stepNo $Steps.Count ([string]$s.Title); Invoke-Step $s }
+  Say ('  [' + ('#' * 24) + ']  all ' + $Steps.Count + ' setup steps done') 'Green'
   Invoke-Build
   Write-OutputFiles
   Publish-Update

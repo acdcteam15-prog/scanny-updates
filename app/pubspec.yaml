@@ -1,7 +1,7 @@
 name: scanny
 description: Scanny - vulnerability alerts for your team, grouped by the systems each group manages.
 publish_to: 'none'
-version: 1.3.2+3
+version: 1.16.0+16
 
 environment:
   sdk: '>=3.13.0 <4.0.0'

@@ -32,9 +32,33 @@ String mentionLabel(List<String> ids, String Function(String) nameOf) {
   return n.isEmpty ? 'Mentions 1 system' : 'Mentions $n';
 }
 
-List<WatchItem> filterWatch(List<WatchItem> items, {required WatchMode mode, required Set<String> myGroups, required bool isAdmin, required Set<String> read, String feed = ''}) {
+/// Every word typed must appear in the title, the summary, the text inside the article, the feed or the CVE list (any case).
+bool watchMatchesQuery(WatchItem i, String query) {
+  final words = query.toLowerCase().split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
+  if (words.isEmpty) return true;
+  final hay = '${i.title}\n${i.summary}\n${i.text}\n${i.feed}\n${i.cves.join(' ')}'.toLowerCase();
+  return words.every(hay.contains);
+}
+
+/// A piece of the article's text around the first word of the search, when the match is only in the text ('' otherwise).
+String watchSnippet(WatchItem i, String query, {int width = 150}) {
+  final words = query.toLowerCase().split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
+  if (words.isEmpty) return '';
+  final head = '${i.title} ${i.summary}'.toLowerCase();
+  if (words.any(head.contains)) return '';
+  final flat = i.text.replaceAll(RegExp(r'\s+'), ' ');
+  final low = flat.toLowerCase();
+  final at = [for (final w in words) low.indexOf(w)].where((p) => p >= 0).fold<int>(-1, (a, b) => a < 0 || b < a ? b : a);
+  if (at < 0) return '';
+  final a = at > width ~/ 3 ? at - width ~/ 3 : 0;
+  final end = a + width < flat.length ? a + width : flat.length;
+  return '${a > 0 ? '…' : ''}${flat.substring(a, end)}${end < flat.length ? '…' : ''}';
+}
+
+List<WatchItem> filterWatch(List<WatchItem> items, {required WatchMode mode, required Set<String> myGroups, required bool isAdmin, required Set<String> read, String feed = '', String query = ''}) {
   final out = items.where((i) {
     if (feed.isNotEmpty && i.feed != feed) return false;
+    if (!watchMatchesQuery(i, query)) return false;
     if (mode == WatchMode.mine && !mentionsMe(i, myGroups, isAdmin)) return false;
     if (mode == WatchMode.unread && read.contains(i.id)) return false;
     return true;

@@ -59,6 +59,107 @@ void main() {
   ok(applyFilter([f('M', 'high', extra: {'assignee': 'ali@example.com'}), f('N', 'high')], const FindingFilter(mine: 'Ali@example.com')).length == 1, 'only mine');
   final c = countOpen(all);
   ok(c.critical == 1 && c.high == 1 && c.medium == 1 && c.open == 3, 'counts');
+  print('dashboard');
+  final nowT = DateTime(2026, 11, 11, 15);
+  final fa = f('A', 'high', extra: {'kev': true, 'firstSeen': DateTime(2026, 11, 11, 1)});
+  final fb = f('B', 'critical', extra: {'due': '2000-01-01', 'firstSeen': DateTime(2026, 11, 9, 23)});
+  final fc = f('C', 'high', status: 'solved', extra: {'firstSeen': DateTime(2026, 10, 1)});
+  final dc = dailyCounts([fa, fb, fc], now: nowT);
+  ok(dc.length == 14 && dc.last == 1 && dc[11] == 1 && dc.fold<int>(0, (x, y) => x + y) == 2, 'daily counts: today last, older than 14 days left out');
+  ok(applyFilter([fa, fb, fc], const FindingFilter(exploited: true)).map((e) => e.cve).join() == 'A', 'exploited filter');
+  ok(applyFilter([fa, fb, fc], const FindingFilter(overdueOnly: true)).map((e) => e.cve).join() == 'B', 'overdue filter');
+  ok(applyFilter([fa, fb, fc], const FindingFilter(today: true), now: nowT).map((e) => e.cve).join() == 'A', 'new today filter');
+  print('share a finding');
+  final sh = findingShareText(f('CVE-2026-1', 'critical', extra: {'sysVersion': '17.9', 'headline': 'Remote code execution', 'kev': true, 'fixed': '17.9.5'}));
+  ok(sh.startsWith('CVE-2026-1  Critical (exploited in the wild)\nCore switch 17.9\nRemote code execution\nFixed in 17.9.5\n') && sh.endsWith('https://nvd.nist.gov/vuln/detail/CVE-2026-1'), 'share text lines');
+  ok(!findingShareText(f('CVE-2', 'low')).contains('Fixed in'), 'no fixed version: no line');
+  print('snooze, saved views, what changed');
+  final sn = f('SN', 'high', extra: {'snoozeUntil': DateTime(2026, 11, 20)});
+  final nowS = DateTime(2026, 11, 11);
+  ok(sn.snoozedAt(nowS) && !sn.snoozedAt(DateTime(2026, 11, 21)), 'snoozed only until its date');
+  ok(applyFilter([sn, f('OK', 'high')], const FindingFilter(), now: nowS).map((e) => e.cve).join() == 'OK', 'snoozed findings leave the normal open list');
+  ok(applyFilter([sn, f('OK', 'high')], const FindingFilter(snoozed: true), now: nowS).map((e) => e.cve).join() == 'SN', 'the Snoozed filter shows only them');
+  ok(applyFilter([sn], FindingFilter(statuses: Status.values.toSet()), now: nowS).length == 1, 'Everything still includes them');
+  ok(countOpen([f('FAR', 'high', extra: {'snoozeUntil': DateTime(2100)}), f('OK2', 'critical')]).open == 1, 'counts skip snoozed ones');
+  final view = SavedView('Mine, exploited', const FindingFilter(severities: {Severity.critical, Severity.high}, mine: 'x@y.z', exploited: true, snoozed: false, statuses: {Status.solved}));
+  final back = SavedView.decode(view.encode(), myEmail: 'ali@example.com');
+  ok(back != null && back.name == 'Mine, exploited' && back.filter.severities.length == 2 && back.filter.mine == 'ali@example.com' && back.filter.exploited && back.filter.statuses.contains(Status.solved), 'a saved view round trips and uses the signed-in email');
+  ok(SavedView.decode('not json') == null && SavedView.decode('{"name":"","f":{}}') == null, 'bad saved views are ignored');
+  ok(const FindingFilter().isDefault && !const FindingFilter(today: true).isDefault, 'default filter detection');
+  final since = DateTime(2026, 11, 10, 12);
+  final c1 = f('N1', 'critical', extra: {'firstSeen': DateTime(2026, 11, 11, 1)});
+  final c2 = f('N2', 'low', extra: {'firstSeen': DateTime(2026, 11, 10, 20)});
+  final c3 = f('CH', 'high', extra: {'firstSeen': DateTime(2026, 10, 1), 'statusAt': DateTime(2026, 11, 11), 'statusBy': 'sara@example.com'});
+  final c4 = f('MY', 'high', extra: {'firstSeen': DateTime(2026, 10, 1), 'statusAt': DateTime(2026, 11, 11), 'statusBy': 'Ali@Example.com'});
+  final ch = changesSince([c1, c2, c3, c4], since, 'ali@example.com');
+  ok(ch.added == 2 && ch.addedCritical == 1 && ch.changedByOthers == 1 && ch.any, 'what changed counts new findings and other people\'s changes, not mine');
+  ok(!changesSince([c3], DateTime(2026, 11, 12), 'x').any, 'nothing new since a later time');
+  print('trend and do this today');
+  final tNow = DateTime(2026, 11, 11, 15);
+  final w1 = f('W1', 'high', extra: {'firstSeen': DateTime(2026, 11, 10)});
+  final w2 = f('W2', 'high', extra: {'firstSeen': DateTime(2026, 11, 8)});
+  final w3 = f('W3', 'high', extra: {'firstSeen': DateTime(2026, 11, 1)});
+  final tr = weekTrend([w1, w2, w3], now: tNow);
+  ok(tr.cur == 2 && tr.prev == 1, 'this week 2, the week before 1');
+  final kevF = f('K', 'critical', score: 95, extra: {'kev': true});
+  final ovF = f('O2', 'high', score: 60, extra: {'due': '2020-01-01'});
+  final hi = f('H', 'high', score: 75);
+  final low = f('L', 'low', score: 10);
+  final snz = f('S', 'critical', score: 99, extra: {'kev': true, 'snoozeUntil': DateTime(2100)});
+  final tl = todayList([low, hi, ovF, kevF, snz], now: tNow);
+  ok(tl.map((e) => e.f.cve).join(',') == 'K,O2,H', 'exploited first, then overdue, then high score; low and snoozed left out');
+  ok(tl.map((e) => e.why).join(',') == 'Exploited,Overdue,Score 75', 'the reason shown for each');
+  ok(todayList([low, f('M', 'medium', score: 40)], now: tNow).isEmpty && todayList([kevF, ovF, hi], now: tNow, n: 2).length == 2, 'a calm day is empty; the list is capped');
+  print('published, references, sort, ask AI');
+  final pf = Finding.fromMap('x', {
+    'cve': 'CVE-1', 'label': 'high', 'published': '2025-07-24T12:00:00Z',
+    'refs': [
+      {'url': 'https://a.example/x', 'tags': ['Vendor Advisory', 'Patch', '', 'a', 'b', 'c']},
+      {'url': 'javascript:alert(1)'},
+      {'url': 'ftp://x'},
+      'junk',
+      {'tags': []},
+    ],
+  });
+  ok(pf.published == '2025-07-24' && Finding.fromMap('y', {'cve': 'C'}).published == '' && Finding.fromMap('y', {'cve': 'C'}).refs.isEmpty, 'published date is cut to the day; missing is empty');
+  ok(pf.refs.length == 1 && pf.refs.first.url == 'https://a.example/x' && pf.refs.first.tags.join(',') == 'Vendor Advisory,Patch,a,b', 'only web links are kept, at most 4 tags each');
+  ok(refLabel('https://www.cisa.gov/known-exploited-vulnerabilities-catalog?field_cve=CVE-2025-20281').startsWith('cisa.gov/known-exploited') && refLabel('https://x.example/${'a' * 200}').length <= 58, 'link labels are short');
+  final sa = f('SA', 'high', score: 90, extra: {'published': '2024-01-01'});
+  final sb = f('SB', 'high', score: 10, extra: {'published': '2026-05-05'});
+  final sc = f('SC', 'high', score: 50);
+  ok(applyFilter([sa, sb, sc], const FindingFilter()).map((e) => e.cve).join(',') == 'SA,SC,SB', 'default sort: highest priority');
+  ok(applyFilter([sa, sb, sc], const FindingFilter(sort: 'published')).map((e) => e.cve).join(',') == 'SB,SA,SC', 'newest published first, unknown date last');
+  ok(!const FindingFilter(sort: 'published').isDefault && FindingFilter.fromMap(const FindingFilter(sort: 'published').toMap()).sort == 'published' && FindingFilter.fromMap({'so': 'weird'}).sort == 'score', 'the sort is part of a saved view');
+  ok(aiHistory([('1', 'a'), ('2', ''), ('3', 'c'), ('4', 'd')]) == 'Q: 3\nA: c\nQ: 4\nA: d' && aiHistory(const []) == '', 'chat history: last two answered turns');
+  print('activity red dots');
+  final tBase = DateTime(2026, 11, 11, 12);
+  AuditEntry au(String id, String by, DateTime? at) => AuditEntry(id: id, fid: 'x', cve: 'C', action: 'status', text: 't', by: by, byName: by, at: at);
+  final ea1 = au('a1', 'ali@x.com', tBase.add(const Duration(seconds: 5)));
+  final ea2 = au('a2', 'BADER@x.com', tBase.add(const Duration(seconds: 6)));
+  final ea3 = au('a3', 'ali@x.com', tBase.subtract(const Duration(seconds: 1)));
+  final ea4 = au('a4', 'ali@x.com', tBase.add(const Duration(seconds: 9)));
+  const rd = {'a4'};
+  ok(isUnreadActivity(ea1, 'bader@x.com', tBase, rd), 'somebody else, after the first launch, not opened: unread');
+  ok(!isUnreadActivity(ea2, 'bader@x.com', tBase, rd) && !isUnreadActivity(ea3, 'bader@x.com', tBase, rd) && !isUnreadActivity(ea4, 'bader@x.com', tBase, rd) && !isUnreadActivity(au('n', 'a', null), 'b', tBase, rd), 'my own, older, already opened, or not dated yet: not unread');
+  ok(activityDot([ea1, ea2, ea3, ea4], 'bader@x.com', tBase, rd, DateTime.fromMillisecondsSinceEpoch(0)), 'the tab has a dot');
+  ok(!activityDot([ea1, ea2, ea3, ea4], 'bader@x.com', tBase, rd, tBase.add(const Duration(seconds: 5))) && activityDot([ea1], 'bader@x.com', tBase, rd, tBase.add(const Duration(seconds: 4))), 'the tab dot clears when the tab was opened after the item arrived');
+  ok(addRead(['a', 'b'], 'b').join() == 'ab' && addRead(['a'], 'b').join() == 'ab' && addRead([for (var i = 0; i < 400; i++) 'i$i'], 'new').length == 400, 'the list of opened items is kept short');
+  print('article search and advisory findings');
+  WatchItem mkArt(String id, String title, String summary, String text, {List<String> cves = const [], String feed = 'CIS'}) =>
+      WatchItem(id: id, title: title, feed: feed, link: 'https://x/$id', summary: summary, published: '', t: 1, cves: cves, groups: const [], mine: false, text: text);
+  final art1 = mkArt('1', 'Fortinet Multiple Products (CVE-2026-126xxx et al.)', 'Multiple vulnerabilities across various Fortinet products', 'SYSTEMS AFFECTED:\nFortiManager 7.6.0 through 7.6.7\nSQL Injection (CVE-2026-126262)', cves: ['CVE-2026-126262']);
+  final art2 = mkArt('2', 'Gardening news', 'tomatoes', 'Nothing about networks here');
+  ok(watchMatchesQuery(art1, '') && watchMatchesQuery(art1, 'fortimanager') && watchMatchesQuery(art1, 'FORTIMANAGER 7.6') && !watchMatchesQuery(art2, 'fortimanager') && watchMatchesQuery(art1, 'cve-2026-126262'), 'search: every word, any case, in the title, the summary, the text inside or the CVE list');
+  ok(!watchMatchesQuery(art1, 'fortimanager tomatoes') && watchMatchesQuery(art2, 'tomatoes nothing'), 'every word must be found');
+  ok(watchSnippet(art1, 'fortimanager').contains('FortiManager 7.6.0 through 7.6.7') && watchSnippet(art1, 'fortinet') == '' && watchSnippet(art1, '') == '' && watchSnippet(art2, 'networks').contains('networks'), 'a snippet only when the match is in the text');
+  ok(filterWatch([art1, art2], mode: WatchMode.all, myGroups: const {}, isAdmin: true, read: const {}, query: 'fortimanager').map((e) => e.id).join() == '1', 'the filter uses the search');
+  final adv = Finding.fromMap('s1_ADV-2026-133', {
+    'cve': 'ADV-2026-133', 'label': 'high', 'sysName': 'FortiManager', 'sysVersion': '7.6.2', 'title': 'Fortinet Multiple Products', 'status': 'ongoing',
+    'advisory': {'id': 'ADV-2026-133', 'title': 'Fortinet Multiple Products', 'link': 'https://cis.example/2026-133', 'feed': 'CIS', 'version': '7.6.2', 'cves': ['CVE-2026-126170', 'CVE-2026-126262'], 'affected': ['FortiManager 7.6.0 through 7.6.7']},
+  });
+  ok(adv.advisory != null && adv.advisory!.cves.length == 2 && adv.advisory!.affected.first.startsWith('FortiManager') && Finding.fromMap('x', {'cve': 'C'}).advisory == null && advisoryFrom('junk') == null, 'advisory data is read');
+  ok(findingShareText(adv) == 'ADV-2026-133  High\nFortinet Multiple Products\nLists FortiManager 7.6.2 as affected\n2 CVEs\nhttps://cis.example/2026-133', 'sharing an advisory finding: its article, not an NVD page');
+  ok(WatchItem.fromMap('9', {'title': 't', 'text': 'inside'}).text == 'inside' && WatchItem.fromMap('9', {'title': 't'}).text == '', 'the text of an article is read');
   print('overdue');
   ok(f('O', 'high', extra: {'due': '2020-01-01'}).overdue && !f('P', 'high', extra: {'due': '2999-01-01'}).overdue && !f('Q', 'high', status: 'solved', extra: {'due': '2020-01-01'}).overdue, 'overdue only while open');
   print('two copies');
